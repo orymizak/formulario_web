@@ -92,8 +92,8 @@ El sistema detecta automáticamente comportamiento anómalo:
 
 | Método | Endpoint | Descripción |
 |--------|---------|-------------|
-| `POST` | `/otp/request` | Enviar código OTP al correo |
-| `POST` | `/otp/verify` | Verificar OTP → obtener JWT |
-| `POST` | `/contactos` | Registrar contacto |
-| `GET` | `/contactos` | Consultar registros |
+| `POST` | `/api/v1/otp/request` | Enviar código OTP al correo |
+| `POST` | `/api/v1/otp/verify` | Verificar OTP → obtener JWT |
+| `POST` | `/api/v1/contactos` | Registrar contacto |
+| `GET` | `/api/v1/contactos` | Consultar registros |
 | `GET` | `/health` | Estado del sistema |
