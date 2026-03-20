@@ -1,0 +1,50 @@
+{
+  "name": "contactos-api",
+  "version": "1.0.0",
+  "description": "API de captura de contactos - Hubox ejercicio práctico",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest --coverage",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.893.0",
+    "@aws-sdk/client-s3": "^3.1013.0",
+    "@aws-sdk/client-ses": "^3.893.0",
+    "@aws-sdk/client-sso": "^3.893.0",
+    "@aws-sdk/core": "^3.893.0",
+    "@aws-sdk/credential-provider-node": "^3.893.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "hpp": "^0.2.3",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^8.0.3",
+    "pg": "^8.20.0",
+    "sequelize": "^6.35.1",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "winston-cloudwatch": "^6.2.0",
+    "xss": "^1.0.14"
+  },
+  "overrides": {
+    "fast-xml-parser": "5.5.6"
+  },
+  "devDependencies": {
+    "eslint": "^8.55.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,52 @@
+/* ── HERO ─────────────────────────────────────────────────── */
+.hero {
+  background-color: #232323;
+  position: relative;
+}
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    -45deg, transparent, transparent 40px,
+    rgba(255,255,255,.015) 40px, rgba(255,255,255,.015) 41px
+  );
+  pointer-events: none;
+}
+.hero::after {
+  content: '';
+  position: absolute; right: -60px; top: -80px;
+  width: 360px; height: 360px;
+  background: radial-gradient(circle, rgba(245,60,62,.2) 0%, transparent 65%);
+  pointer-events: none;
+}
+.hero .container { position: relative; z-index: 1; }
+
+.heroTitle {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 300;
+  color: white;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin-bottom: 0;
+}
+
+/* ── FOOTER ───────────────────────────────────────────────── */
+.footer {
+  background-color: #464040;
+  padding: 2rem 0;
+}
+
+@media (max-width: 575.98px) {
+  .heroTitle { font-size: 1.8rem; }
+}
+@media (min-width: 992px) {
+  .stickyPanel {
+    position: sticky;
+    /* Ajusta este valor según la altura combinada de tu Topbar + Navbar */
+    /* Si tu navbar mide ~100px, ponle un poco más para que respire */
+    top: 150px; 
+    align-self: flex-start; /* CRITICO: Evita que la columna se estire a la altura de la card */
+    height: fit-content;
+  }
+}
