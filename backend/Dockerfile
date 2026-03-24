@@ -1,17 +1,19 @@
-# Dockerfile para desarrollo local — NO usar en producción
-FROM node:20-alpine
-
+FROM node:20-alpine AS deps
 WORKDIR /app
-
-# Instalar dependencias (incluyendo devDependencies para nodemon)
 COPY package*.json ./
-RUN npm install
+RUN npm ci --only=production && npm cache clean --force
 
+FROM node:20-alpine AS runner
+WORKDIR /app
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY --from=deps /app/node_modules ./node_modules
 COPY src/ ./src/
-
-ENV NODE_ENV=development
+COPY package.json ./
+COPY global-bundle.pem ./
+ENV NODE_ENV=production
 ENV PORT=8080
-
 EXPOSE 8080
-
-CMD ["npm", "run", "dev"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD wget -qO- http://localhost:8080/health/ready || exit 1
+USER appuser
+CMD ["node", "src/server.js"]
