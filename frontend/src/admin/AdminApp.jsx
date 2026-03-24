@@ -1,21 +1,19 @@
-import { useState, useEffect } from 'react'
-import { hasToken, clearToken, saveToken, adminApi } from './adminApi'
-import AdminLogin from './AdminLogin'
+import { useState } from 'react'
+import { hasToken, clearToken, saveToken } from './adminApi'
 import AdminDashboard from './AdminDashboard'
 
 export default function AdminApp() {
-  const [authed, setAuthed] = useState(hasToken())
+  const [isAdmin, setIsAdmin] = useState(hasToken())
 
   function handleLogin(token) {
     saveToken(token)
-    setAuthed(true)
+    setIsAdmin(true)
   }
 
   function handleLogout() {
     clearToken()
-    setAuthed(false)
+    setIsAdmin(false)
   }
 
-  if (!authed) return <AdminLogin onLogin={handleLogin} />
-  return <AdminDashboard onLogout={handleLogout} />
+  return <AdminDashboard isAdmin={isAdmin} onLogin={handleLogin} onLogout={handleLogout} />
 }

@@ -44,7 +44,7 @@ export default function AdminLogin({ onLogin }) {
             <sup style={{ fontSize: '0.5em', color: 'var(--red)' }}>®</sup>
           </div>
           <div style={{ fontSize: '0.78rem', color: '#888', marginTop: 2 }}>
-            Panel de Administración
+            Panel de administración
           </div>
         </div>
 

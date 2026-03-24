@@ -37,7 +37,16 @@ export default function VerificacionStep({ email, expiresIn, onSuccess, onBack, 
   }
 
   function handleChange(idx, val) {
-    const ch = val.replace(/\D/g, '').slice(-1)
+    const digits6 = val.replace(/\D/g, '').slice(0, 6)
+    if (digits6.length > 1) {
+      const next = Array(6).fill('').map((_, i) => digits6[i] || '')
+      setDigits(next)
+      const lastIdx = Math.min(digits6.length - 1, 5)
+      refs.current[lastIdx]?.focus()
+      if (digits6.length === 6) verify(digits6)
+      return
+    }
+    const ch = digits6.slice(-1)
     const next = [...digits]; next[idx] = ch; setDigits(next)
     if (ch && idx < 5) refs.current[idx + 1]?.focus()
     if (ch && idx === 5 && next.join('').length === 6) verify(next.join(''))
@@ -51,8 +60,15 @@ export default function VerificacionStep({ email, expiresIn, onSuccess, onBack, 
   }
 
   function handlePaste(e) {
-    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (text.length === 6) { e.preventDefault(); setDigits([...text]); verify(text) }
+    const text = (e.clipboardData || window.clipboardData)?.getData('text')
+    if (!text) return
+    const code = text.replace(/\D/g, '').slice(0, 6)
+    if (code.length === 6) {
+      e.preventDefault()
+      setDigits([...code])
+      refs.current[5]?.focus()
+      verify(code)
+    }
   }
 
   async function handleResend() {
@@ -77,7 +93,9 @@ export default function VerificacionStep({ email, expiresIn, onSuccess, onBack, 
             {digits.map((d, i) => (
               <input key={i} ref={el => refs.current[i] = el}
                 className={`form-control text-center fw-bold ${styles.digit} ${d ? styles.filled : ''}`}
-                type="text" inputMode="numeric" pattern="[0-9]" maxLength={1}
+                type="text" inputMode="numeric" pattern="[0-9]"
+                maxLength={i === 0 ? 6 : 1}
+                autoComplete={i === 0 ? "one-time-code" : "off"}
                 value={d}
                 onChange={e => handleChange(i, e.target.value)}
                 onKeyDown={e => handleKeyDown(i, e)}

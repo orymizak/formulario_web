@@ -1,13 +1,14 @@
 // ── Admin API client ──────────────────────────────────────────────────────────
-const BASE = 'http://localhost:8080/api/v1/admin'
+const BASE = (import.meta.env.VITE_API_URL || '') + '/api/v1/admin'
+const PUB  = (import.meta.env.VITE_API_URL || '') + '/api/v1'
 
 function getToken() { return sessionStorage.getItem('admin_token') }
 export function saveToken(t) { sessionStorage.setItem('admin_token', t) }
 export function clearToken() { sessionStorage.removeItem('admin_token') }
 export function hasToken() { return !!getToken() }
 
-async function req(path, opts = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+async function req(path, opts = {}, base = BASE) {
+  const res = await fetch(`${base}${path}`, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
@@ -20,20 +21,29 @@ async function req(path, opts = {}) {
   return data
 }
 
+function buildQs(params = {}) {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined))
+  ).toString()
+  return qs ? '?' + qs : ''
+}
+
 export const adminApi = {
   login: (username, password) =>
     req('/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
 
-  getContactos: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined))
-    ).toString()
-    return req(`/contactos${qs ? '?' + qs : ''}`)
-  },
+  // Vista pública — sin token, datos censurados (sin ?raw)
+  getContactosPublic: (params = {}) =>
+    req(`/contactos${buildQs(params)}`),
 
-  getContacto: (id) => req(`/contactos/${id}`),
+  // Vista admin — con token, datos completos (?raw=1)
+  getContactosAdmin: (params = {}) =>
+    req(`/contactos${buildQs({ ...params, raw: 1 })}`),
 
-  getStats: () => req('/stats'),
+  getContacto: (id, raw = false) =>
+    req(`/contactos/${id}${raw ? '?raw=1' : ''}`),
 
   getAudit: (limit = 50) => req(`/audit?limit=${limit}`),
+
+  getFileUrl: (key) => req(`/file-url?key=${encodeURIComponent(key)}`),
 }

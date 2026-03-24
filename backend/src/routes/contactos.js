@@ -2,8 +2,10 @@ const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
 const path     = require('path');
-// --- NUEVO: SDK de AWS ---
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl }     = require('@aws-sdk/s3-request-presigner');
+
 const { contactoRules, validateResult } = require('../middleware/validators');
 const { requireVerifiedSession }        = require('../services/otpService');
 const { rateLimiter, softRateLimit }    = require('../middleware/rateLimiter');
@@ -14,9 +16,31 @@ const { Op } = require('sequelize');
 const { Contacto, AuditLog } = require('../models');
 const logger = require('../utils/logger');
 const redis  = require('../config/redis');
+const { requireAdmin } = require('./admin');
 
 // --- NUEVO: Cliente S3 ---
 const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
+
+// GET /api/v1/admin/file-url?key=fotos/123-foto.jpg
+// Genera una URL firmada de 15 min para ver el archivo desde el frontend
+
+// GET /api/v1/contactos/file-url?key=fotos/xxx&folio=uuid
+// Valida que el folio existe y la key le pertenece antes de firmar
+router.get('/file-url', softRateLimit, async (req, res) => {
+  const { key, folio } = req.query;
+  if (!key || !folio) return res.status(400).json({ success: false });
+
+  const contacto = await Contacto.findByPk(folio, {
+    attributes: ['fotoKey', 'ineKey']
+  });
+  // Solo firma si la key pertenece a ese folio (evita enumerar archivos de otros)
+  if (!contacto || (contacto.fotoKey !== key && contacto.ineKey !== key)) {
+    return res.status(403).json({ success: false, message: 'No autorizado.' });
+  }
+  const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key });
+  const url = await getSignedUrl(s3, cmd, { expiresIn: 900 });
+  res.json({ success: true, url });
+});
 
 // ─── Multer: archivos en memoria ─────────────────────────────────────────────
 const upload = multer({
@@ -60,7 +84,7 @@ router.post('/',
 
     const {
       nombre, apellidoP, apellidoM, apellido: apellidoRaw,
-      email, telefono, fuente,
+      email, telefono,
       curp, genero, fechaNac,
       idempotencyKey,
     } = req.body;
@@ -111,7 +135,6 @@ router.post('/',
         apellido:          apellido,
         email:             email?.toLowerCase()?.trim(),
         telefono:          telefono?.trim(),
-        fuente:            fuente || null,
         curp:              curpNorm,
         ipOrigen:          ip,
         deviceFingerprint: fp,
@@ -121,8 +144,8 @@ router.post('/',
         fotoKey:           fotoKey,
         ineKey:            ineKey,
         notas: [
-          genero   ? `Género: ${genero}`       : null,
-          fechaNac ? `Fecha nac.: ${fechaNac}` : null,
+          genero   ? `${genero}`       : null,
+          fechaNac ? `${fechaNac}`     : null,
         ].filter(Boolean).join(' | ') || null,
       });
 
@@ -131,7 +154,7 @@ router.post('/',
         event: 'CONTACT_CREATED', status: 'success',
         email, ip, fingerprint: fp,
         requestId: req.requestId,
-        metadata: { contactoId: contacto.id, fuente, hasFiles: !!(fotoKey || ineKey) },
+        metadata: { contactoId: contacto.id, hasFiles: !!(fotoKey || ineKey) },
       }).catch(() => {});
 
       emailService.sendConfirmation(email, nombre, contacto.id).catch(() => {});
@@ -158,7 +181,7 @@ router.post('/',
 );
 
 // ─── GET /api/v1/contactos ────────────────────────────────────────────────────
-router.get('/', softRateLimit, async (req, res, next) => {
+router.get('/', /* requireAdmin, */ softRateLimit, async (req, res, next) => {
   try {
     const page   = Math.max(1, parseInt(req.query.page  || '1'));
     const limit  = Math.min(100, parseInt(req.query.limit || '20'));
@@ -206,7 +229,7 @@ router.get('/:id', softRateLimit, async (req, res, next) => {
 
     const contacto = await Contacto.findOne({
       where: { id },
-      attributes: ['id', 'nombre', 'apellido', 'email', 'telefono', 'fuente', 'createdAt'],
+      attributes: ['id', 'nombre', 'apellido', 'email', 'telefono', 'createdAt', 'fotoKey', 'ineKey'],
     });
 
     if (!contacto) {
@@ -247,7 +270,7 @@ router.post('/check-duplicates', softRateLimit, async (req, res, next) => {
     else if (telefono && match.telefono === telefono.trim())   field = 'telefono';
     else if (curp && match.curp === curp.trim().toUpperCase()) field = 'curp';
 
-    return res.json({ success: true, exists: true, field });
+    return res.json({ success: true, exists: true });
   } catch (err) { next(err); }
 });
 
@@ -262,25 +285,26 @@ router.post('/folio-reminder', softRateLimit, async (req, res, next) => {
 
   const emailNorm = email.toLowerCase().trim();
 
-  // Rate limit por email: 2 intentos cada 10 minutos
-  const reminderKey = `folio-reminder:${emailNorm}`;
+  const REMINDER_TTL = 6 * 60 * 60; // 6 horas en segundos
+  const reminderKey  = `folio-reminder:${emailNorm}`;
   try {
-    const count = await redis.incr(reminderKey);
-    if (count === 1) await redis.expire(reminderKey, 600);
-    if (count > 2) {
-      const ttl = await redis.ttl(reminderKey);
-      return res.status(429).json({
-        success: false, code: 'REMINDER_RATE_LIMITED',
-        message: 'Ya enviamos tu folio recientemente. Revisa tu correo o intenta en unos minutos.',
-        retryAfterSeconds: ttl,
+    const already = await redis.get(reminderKey);
+    if (already) {
+      // Ya se envió en las últimas 6h — responder igual que si se enviara (anti-enumeración)
+      // El frontend mostrará el mensaje genérico sin saber que fue bloqueado
+      return res.json({
+        success: true,
+        message: 'Si ese correo tiene un registro, recibirás tu folio en unos momentos.',
+        hint: 'already_sent',  // el frontend puede leer esto opcionalmente
       });
     }
+    // Marcar como enviado ANTES de enviar (evita doble envío por race condition)
+    await redis.set(reminderKey, 1, 'EX', REMINDER_TTL);
   } catch { /* fail-open */ }
 
   try {
     // Buscar el contacto por email — siempre responder igual aunque no exista (anti-enumeración)
     const conditions = [{ email: emailNorm }];
-    const { telefono, curp } = req.body;
     if (telefono?.trim()) conditions.push({ telefono: telefono.trim() });
     if (curp?.trim())     conditions.push({ curp: curp.trim().toUpperCase() });
 

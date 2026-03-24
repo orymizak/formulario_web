@@ -101,6 +101,9 @@ export const api = {
     })
   },
 
+  getFileUrl: (key, folio) =>
+    request(`/contactos/file-url?key=${encodeURIComponent(key)}&folio=${encodeURIComponent(folio)}`),
+
   // Buscar registro por folio (UUID)
   buscarPorFolio: (folio) =>
     request(`/contactos/${encodeURIComponent(folio)}`),

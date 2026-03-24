@@ -10,6 +10,7 @@ const healthRouter    = require('./routes/health');
 const otpRouter       = require('./routes/otp');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ─── Security headers ────────────────────────────────────────────────────────
 app.use(helmet({
@@ -23,6 +24,18 @@ app.use(helmet({
     },
   },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  // Desactivar permissionsPolicy por defecto de Helmet — incluye Origin Trial features
+  // (browsing-topics, run-ad-auction, join-ad-interest-group, private-aggregation)
+  // que no aplican a esta app y generan advertencias en la consola del navegador.
+  permissionsPolicy: {
+    features: {
+      camera:           ["'none'"],
+      microphone:       ["'none'"],
+      geolocation:      ["'none'"],
+      payment:          ["'none'"],
+      usb:              ["'none'"],
+    },
+  },
 }));
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
@@ -30,13 +43,26 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').spl
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin && process.env.NODE_ENV !== 'production') return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origen no permitido > ${origin}`));
+    // Permitir peticiones sin origen (como Postman o health checks internos)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS bloqueado para: ${origin}`);
+      callback(new Error('No permitido por CORS'));
+    }
   },
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Fingerprint', 'X-Request-ID'],
-  credentials: true,
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Request-ID',
+    'X-Device-Fingerprint',  // requerido por rateLimiter y scoringGuard
+    'X-Captcha-Ack',         // captchaGate interno
+    'X-Captcha-Token',       // captchaGate externo
+  ],
+  credentials: true
 }));
 
 // ─── Body parsing ─────────────────────────────────────────────────────────────

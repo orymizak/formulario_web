@@ -1,10 +1,8 @@
 import styles from './SuccessStep.module.css'
+import { useCopy } from '../hooks/useCopy'
 
 export default function SuccessStep({ registroId, email }) {
-  function copyFolio() {
-    if (!registroId) return
-    navigator.clipboard.writeText(registroId).catch(() => {})
-  }
+  const { copy, copied } = useCopy()
 
   return (
     <div className="p-5 text-center" style={{ animation: 'fadeUp 0.3s ease both' }}>
@@ -25,26 +23,68 @@ export default function SuccessStep({ registroId, email }) {
 
       {registroId && (
         <div className="mx-auto mb-4" style={{ maxWidth: 480 }}>
-          {/* Caja del folio */}
-          <div className="p-3 rounded mb-2"
-            style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: 'var(--radius)' }}>
-            <p className="small text-muted mb-1 text-uppercase fw-semibold" style={{ letterSpacing: '0.08em' }}>
-              Tu folio de registro
+          {/* Caja del folio — clickeable completa para copiar */}
+          <button
+            onClick={() => copy(registroId)}
+            title="Clic para copiar tu folio"
+            style={{
+              display: 'block',
+              width: '100%',
+              background: copied ? '#f0fdf4' : '#fff8e1',
+              border: `2px solid ${copied ? '#86efac' : '#ffe082'}`,
+              borderRadius: 'var(--radius)',
+              padding: '1rem 1.25rem',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.25s ease',
+              marginBottom: '0.5rem',
+            }}
+          >
+            {/* Label */}
+            <p style={{
+              fontSize: '0.72rem',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+              color: copied ? '#16a34a' : '#888',
+              transition: 'color 0.25s ease',
+              margin: '0 0 0.5rem',
+            }}>
+              {copied
+                ? <><i className="bi bi-check2 me-1"></i>¡Folio copiado al portapapeles!</>
+                : <>Tu folio de registro · <span style={{ fontWeight: 400, opacity: 0.8 }}>clic para copiar</span></>
+              }
             </p>
-            <div className="d-flex align-items-center justify-content-center gap-2 flex-wrap">
-              <code className="text-dark fw-bold" style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
+
+            {/* Folio + icono */}
+            <div className="d-flex align-items-center justify-content-center gap-3">
+              <code style={{
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                wordBreak: 'break-all',
+                color: copied ? '#15803d' : '#1a1a1a',
+                transition: 'color 0.25s ease',
+                letterSpacing: '0.02em',
+              }}>
                 {registroId}
               </code>
-              <button
-                className="btn btn-sm btn-outline-secondary"
-                onClick={copyFolio}
-                title="Copiar folio"
-                style={{ flexShrink: 0 }}
-              >
-                <i className="bi bi-clipboard"></i>
-              </button>
+              <span style={{
+                flexShrink: 0,
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                background: copied ? '#dcfce7' : 'rgba(0,0,0,0.07)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.05rem',
+                color: copied ? '#16a34a' : '#555',
+                transition: 'all 0.25s ease',
+              }}>
+                <i className={`bi bi-${copied ? 'check2' : 'clipboard'}`}></i>
+              </span>
             </div>
-          </div>
+          </button>
 
           {/* Advertencia sobre el folio */}
           <div className="alert alert-info d-flex gap-2 align-items-start text-start py-2 px-3 small mb-0">

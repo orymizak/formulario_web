@@ -11,26 +11,12 @@ const logger = createLogger({
   ),
   defaultMeta: { service: 'contactos-api' },
   transports: [
-    // Consola (siempre)
+    // En Fargate, la consola es suficiente. 
+    // AWS Logs Driver enviará esto a CloudWatch automáticamente.
     new transports.Console({
       format: isProd ? json() : combine(colorize(), simple()),
     }),
   ],
 });
-
-// CloudWatch en producción
-if (isProd && process.env.CW_LOG_GROUP) {
-  try {
-    const WinstonCloudWatch = require('winston-cloudwatch');
-    logger.add(new WinstonCloudWatch({
-      logGroupName: process.env.CW_LOG_GROUP,
-      logStreamName: process.env.CW_LOG_STREAM || 'app',
-      awsRegion: process.env.AWS_REGION || 'us-east-1',
-      jsonMessage: true,
-    }));
-  } catch {
-    // winston-cloudwatch es opcional en desarrollo
-  }
-}
 
 module.exports = logger;

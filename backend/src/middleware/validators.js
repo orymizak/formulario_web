@@ -38,11 +38,6 @@ const contactoRules = [
     .matches(/^\+?[\d\s\-().]{7,20}$/).withMessage('Teléfono inválido')
     .customSanitizer(sanitize),
 
-  body('fuente')
-    .optional({ nullable: true })
-    .isIn(['Referido', 'LinkedIn', 'Sitio Web', 'Evento', 'Cold outreach', 'Otro', ''])
-    .withMessage('Fuente no válida'),
-
   body('curp')
     .optional({ nullable: true, checkFalsy: true })
     .trim()

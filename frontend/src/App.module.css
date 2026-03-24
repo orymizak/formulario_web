@@ -2,23 +2,31 @@
 .hero {
   background-color: #232323;
   position: relative;
+  /* Una sola capa GPU para el hero completo — no más */
+  transform: translateZ(0);
 }
+
+/* ::before eliminado en móvil — repeating-linear-gradient diagonal
+   es el mayor culpable de scroll jank: se repinta en cada frame,
+   cubre pantalla completa, y el ángulo diagonal impide optimización GPU.
+   En desktop se mantiene como detalle decorativo. */
 .hero::before {
   content: '';
   position: absolute; inset: 0;
-  background: repeating-linear-gradient(
-    -45deg, transparent, transparent 40px,
-    rgba(255,255,255,.015) 40px, rgba(255,255,255,.015) 41px
-  );
   pointer-events: none;
+  /* Sin gradiente en móvil — se activa solo en desktop abajo */
 }
+
 .hero::after {
   content: '';
-  position: absolute; right: -60px; top: -80px;
+  position: absolute; right: 0; top: -80px;
   width: 360px; height: 360px;
-  background: radial-gradient(circle, rgba(245,60,62,.2) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(245,60,62,.15) 0%, transparent 65%);
   pointer-events: none;
+  z-index: 0;
+  /* Sin will-change ni translateZ — evita layer explosion en móvil */
 }
+
 .hero .container { position: relative; z-index: 1; }
 
 .heroTitle {
@@ -31,6 +39,17 @@
   margin-bottom: 0;
 }
 
+/* ── Card fade-in — solo desktop ─────────────────────────── */
+/* En móvil las animaciones + scroll simultáneo causan drop de FPS */
+.fadeKeyframe {
+  /* Sin animación en móvil por defecto */
+}
+
+@keyframes heroScaleIn {
+  from { opacity: 0; transform: scale(0.97) translateY(14px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 /* ── FOOTER ───────────────────────────────────────────────── */
 .footer {
   background-color: #464040;
@@ -40,13 +59,25 @@
 @media (max-width: 575.98px) {
   .heroTitle { font-size: 1.8rem; }
 }
+
+/* ── Desktop: activar todo lo que es costoso en móvil ───────── */
 @media (min-width: 992px) {
+  .hero::before {
+    /* Gradiente decorativo solo en desktop donde la GPU puede manejarlo */
+    background-image: repeating-linear-gradient(
+      -45deg, transparent, transparent 40px,
+      rgba(255,255,255,.012) 40px, rgba(255,255,255,.012) 41px
+    );
+  }
+
+  .fadeKeyframe {
+    animation: heroScaleIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .stickyPanel {
     position: sticky;
-    /* Ajusta este valor según la altura combinada de tu Topbar + Navbar */
-    /* Si tu navbar mide ~100px, ponle un poco más para que respire */
-    top: 150px; 
-    align-self: flex-start; /* CRITICO: Evita que la columna se estire a la altura de la card */
+    top: 200px;
+    align-self: flex-start;
     height: fit-content;
   }
 }

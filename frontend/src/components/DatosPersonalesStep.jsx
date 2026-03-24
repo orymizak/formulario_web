@@ -62,7 +62,7 @@ function FileZone({
   const ref = useRef();
   const [over, setOver] = useState(false);
 
-  function handle(file) {
+  async function handle(file) {
     if (!file) return;
     if (!tipos.includes(file.type))
       return onChange(
@@ -71,7 +71,18 @@ function FileZone({
       );
     if (file.size > maxMB * 1048576)
       return onChange(null, `El archivo supera ${maxMB} MB`);
-    onChange(file, null);
+
+    // iOS libera el blob original si el usuario cambia de app entre selección y submit.
+    // Leer a ArrayBuffer inmediatamente garantiza que los bytes estén en memoria JS,
+    // y reconvertir a File para que multer/FormData lo trate igual que antes.
+    try {
+      const buffer = await file.arrayBuffer();
+      const stable = new File([buffer], file.name, { type: file.type, lastModified: file.lastModified });
+      onChange(stable, null);
+    } catch {
+      // Si arrayBuffer falla, pasar el file original como fallback
+      onChange(file, null);
+    }
   }
 
   const border = error
@@ -92,6 +103,7 @@ function FileZone({
         className={`border rounded p-3 text-center ${border}`}
         style={{
           borderStyle: "dashed",
+          minHeight: 130,
           cursor: "pointer",
           background: over ? "var(--red-dim)" : "var(--gray-100)",
           transition: "all .15s",
@@ -109,7 +121,7 @@ function FileZone({
         }}
       >
         {value ? (
-          <div className="d-flex align-items-center justify-content-center gap-3 flex-wrap">
+          <div className="d-flex align-items-center justify-content-center py-2 gap-3 flex-wrap">
             {preview && value.type?.startsWith("image/") && (
               <img
                 src={URL.createObjectURL(value)}
@@ -188,8 +200,18 @@ export default function DatosPersonalesStep({
   loading = false,
   onCaptchaVerify,
   regLockout,
-  regCooldown,
+  nombreRef
 }) {
+  const emptyForm = {
+    nombre: "",
+    apellidoP: "",
+    apellidoM: "",
+    fechaNac: "",
+    genero: "",
+    email: "",
+    telefono: "",
+    curp: "",
+  };
   const [form, setForm] = useState({
     nombre: data.nombre || "",
     apellidoP: data.apellidoP || "",
@@ -207,6 +229,20 @@ export default function DatosPersonalesStep({
   const [errors, setErrors] = useState({});
   const [alert, setAlert] = useState("");
   const [captchaToken, setCaptchaToken] = useState(null);
+  const [fileZoneKey, setFileZoneKey] = useState(0);
+
+  function handleClear() {
+    setForm(emptyForm);
+    setFoto(null);
+    setIne(null);
+    setFotoErr("");
+    setIneErr("");
+    setErrors({});
+    setAlert("");
+    setCaptchaToken(null);
+    onCaptchaVerify?.(null);
+    setFileZoneKey((k) => k + 1); // remount file zones
+  }
 
   const set = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -311,6 +347,7 @@ export default function DatosPersonalesStep({
               </label>
               <input
                 type="text"
+                ref={nombreRef}
                 placeholder="Ej. María Elena"
                 className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
                 value={form.nombre}
@@ -500,6 +537,7 @@ export default function DatosPersonalesStep({
 
             <div className="col-md-6">
               <FileZone
+                key={`foto-${fileZoneKey}`}
                 label="Fotografía reciente"
                 preview
                 hint={`JPG, PNG o WEBP · Máx ${MAX_FOTO} MB`}
@@ -516,6 +554,7 @@ export default function DatosPersonalesStep({
 
             <div className="col-md-6">
               <FileZone
+                key={`ine-${fileZoneKey}`}
                 label="INE (frente y vuelta)"
                 preview={false}
                 hint={`JPG, PNG, WEBP o PDF · Máx ${MAX_INE} MB`}
@@ -573,41 +612,43 @@ export default function DatosPersonalesStep({
               </div>
             </div>
           </div>
-
           <div
-            className="d-flex justify-content-between align-items-center mt-4 pt-3"
+            className="d-flex flex-column flex-md-row justify-content-center justify-content-md-between align-items-md-center mt-4 pt-3 gap-3"
             style={{ borderTop: "1px solid var(--gray-200)" }}
           >
-            <span className="small text-muted">
+            {/* Texto de campos obligatorios */}
+            {/* order-2: se va al final en móvil | order-md-1: regresa al inicio en PC */}
+            <span className="small text-muted order-2 order-md-1 text-nowrap">
               <span className="text-danger">*</span> Campos obligatorios
             </span>
 
-            <button
-              type="submit"
-              className="btn-hubox d-flex align-items-center gap-2"
-              // Se deshabilita por: carga, falta de captcha O bloqueo de cooldown
-              disabled={!captchaToken || loading || regLockout}
-            >
-              {loading ? (
-                <>
-                  <span
-                    className="spinner-border spinner-border-sm"
-                    role="status"
-                    aria-hidden="true"
-                  ></span>
-                  Procesando...
-                </>
-              ) : regLockout ? (
-                <>
-                  <i className="bi bi-clock-history"></i>
-                  Espera {regCooldown}s
-                </>
-              ) : (
-                <>
-                  Continuar <i className="bi bi-arrow-right"></i>
-                </>
-              )}
-            </button>
+            {/* Contenedor de botones */}
+            {/* order-1: se va arriba en móvil | order-md-2: se va a la derecha en PC */}
+            <div className="d-flex gap-2 order-1 order-md-2 w-100 w-md-auto justify-content-center justify-content-md-end">
+              <button
+                type="button"
+                className="btn-hubox d-flex align-items-center gap-2 flex-fill flex-md-grow-0 justify-content-center"
+                onClick={handleClear}
+                title="Limpiar formulario"
+              >
+                <i className="bi bi-x-circle"></i>
+                Limpiar
+              </button>
+
+              <button
+                type="submit"
+                className="btn-hubox d-flex align-items-center gap-2 flex-fill flex-md-grow-0 justify-content-center"
+                disabled={!captchaToken || loading || regLockout}
+              >
+                {loading ? (
+                  <span className="spinner-border spinner-border-sm" />
+                ) : (
+                  <>
+                    Continuar <i className="bi bi-arrow-right"></i>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

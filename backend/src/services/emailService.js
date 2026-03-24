@@ -18,22 +18,58 @@ function getTransporter() {
 
   const provider = process.env.EMAIL_PROVIDER || 'smtp';
 
-  if (provider === 'ses') {
-    // AWS SES vía nodemailer-ses-transport
-    const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
-    const sesClient = new SESClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-      ...(process.env.AWS_ACCESS_KEY_ID && {
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  if (provider === 'console') {
+    // Modo desarrollo sin email real: imprime en consola y simula envío exitoso
+    _transporter = {
+      sendMail: async (msg) => {
+        const code = (msg.text || '').match(/\d{6}/)?.[0] || '(ver subject)';
+        console.log('\n' + '═'.repeat(55));
+        console.log('  📧  EMAIL (modo consola)');
+        console.log('  Para:    ' + msg.to);
+        console.log('  Asunto:  ' + msg.subject);
+        if (code !== '(ver subject)') {
+          console.log('  ┌─────────────────────┐');
+          console.log('  │  CÓDIGO OTP: ' + code + ' │');
+          console.log('  └─────────────────────┘');
+        } else {
+          console.log('  ' + (msg.text || '').slice(0, 120));
+        }
+        console.log('═'.repeat(55) + '\n');
+        return { messageId: 'console-' + Date.now() };
+      }
+    };
+} else if (provider === 'ses') {
+  const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
+  
+  // Si estás en ECS (Fargate), no necesitas pasar credentials explícitamente, 
+  // el SDK las toma del Task Role automáticamente.
+  const sesClient = new SESv2Client({
+    region: process.env.AWS_REGION || 'us-east-2'
+  });
+
+  _transporter = {
+    sendMail: async ({ from, to, subject, html, text }) => {
+      const cmd = new SendEmailCommand({
+        FromEmailAddress: from,
+        Destination: { ToAddresses: [to] },
+        Content: {
+          Simple: {
+            Subject: { Data: subject },
+            Body: {
+              Html: { Data: html },
+              Text: { Data: text },
+            },
+          },
         },
-      }),
-    });
-    _transporter = nodemailer.createTransport({
-      SES: { ses: sesClient, aws: { SendRawEmailCommand } },
-    });
-  } else {
+      });
+
+      // Importante: No retornes el resultado directo, solo lo que el resto del código espera
+      const result = await sesClient.send(cmd);
+
+      return { messageId: result.MessageId };
+    },
+  };
+} else {
     // SMTP — Mailtrap o cualquier servidor SMTP
     _transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'sandbox.smtp.mailtrap.io',
@@ -85,7 +121,7 @@ function confirmTemplate(nombre, folio) {
        </div>
        <p style="color:#444;font-size:13px;line-height:1.6">
          Puedes usar este folio para consultar tu información en cualquier momento a través del
-         <a href="https://practica-hubox.mx" style="color:#f53c3e">formulario de búsqueda</a>
+         <a href="https://hubox.orymizak.com" style="color:#f53c3e">formulario de búsqueda</a>
          en nuestro sitio web.
        </p>`
     : ''
@@ -115,13 +151,13 @@ function confirmTemplate(nombre, folio) {
   </div>
 </body>
 </html>`,
-    text: `Hola ${nombre},\n\nHemos recibido tu información. Puedes consultarla en el formulario de búsqueda en practica-hubox.mx con el siguiente folio:\n\n${folio || '(sin folio)'}\n\n— HuBOX®`,
+    text: `Hola ${nombre},\n\nHemos recibido tu información. Puedes consultarla en el formulario de búsqueda en hubox.orymizak.com con el siguiente folio:\n\n${folio || '(sin folio)'}\n\n— HuBOX®`,
   };
 }
 
 // ─── Enviar OTP ───────────────────────────────────────────────────────────────
 async function sendOtp(to, code) {
-  const from = process.env.EMAIL_FROM || 'noreply@practica-hubox.mx';
+  const from = process.env.EMAIL_FROM || 'hubox-noreply@orymizak.com';
   const expires = parseInt(process.env.OTP_EXPIRES_MINUTES || '10');
   const tpl = otpTemplate(code, expires);
 
@@ -145,7 +181,7 @@ async function sendOtp(to, code) {
 
 // ─── Enviar confirmación de registro ─────────────────────────────────────────
 async function sendConfirmation(to, nombre, folio) {
-  const from = process.env.EMAIL_FROM || 'noreply@practica-hubox.mx';
+  const from = process.env.EMAIL_FROM || 'hubox-noreply@orymizak.com';
   const tpl = confirmTemplate(nombre, folio);
   try {
     const info = await getTransporter().sendMail({ from, to, ...tpl });
@@ -186,7 +222,7 @@ function folioReminderTemplate(nombre, folio) {
       <p style="color:#444;font-size:13px;line-height:1.6">
         Puedes usar este folio para consultar tu información en cualquier momento
         a través del formulario de búsqueda en
-        <a href="https://practica-hubox.mx" style="color:#f53c3e">practica-hubox.mx</a>.
+        <a href="https://hubox.orymizak.com" style="color:#f53c3e">hubox.orymizak.com</a>.
       </p>
       <p style="color:#888;font-size:12px;margin-top:24px">
         Si no solicitaste este reenvío, puedes ignorar este mensaje.<br>
@@ -197,13 +233,13 @@ function folioReminderTemplate(nombre, folio) {
   </div>
 </body>
 </html>`,
-    text: `Hola ${nombre},\n\nNos solicitaste el reenvío de tu folio de registro:\n\n${folio}\n\nPuedes usarlo para consultar tu información en practica-hubox.mx.\n\n— HuBOX®`,
+    text: `Hola ${nombre},\n\nNos solicitaste el reenvío de tu folio de registro:\n\n${folio}\n\nPuedes usarlo para consultar tu información en hubox.orymizak.com.\n\n— HuBOX®`,
   };
 }
 
 // ─── Enviar recordatorio de folio ─────────────────────────────────────────────
 async function sendFolioReminder(to, nombre, folio) {
-  const from = process.env.EMAIL_FROM || 'noreply@practica-hubox.mx';
+  const from = process.env.EMAIL_FROM || 'hubox-noreply@orymizak.com';
   const tpl  = folioReminderTemplate(nombre, folio);
   try {
     const info = await getTransporter().sendMail({ from, to, ...tpl });

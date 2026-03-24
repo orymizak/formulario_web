@@ -1,14 +1,15 @@
-/* ── FUENTES HUBOX ────────────────────────────────────────── */
 @font-face {
   font-family: 'Widy';
   src: url('/assets/fonts/widy.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
+  font-display: swap; /* evita FOIT — muestra fallback mientras carga */
 }
 @font-face {
   font-family: 'Eurostile';
   src: url('/assets/fonts/eurostile.ttf') format('truetype');
   font-style: normal;
+  font-display: swap; /* evita bloqueo de render por fuente personalizada */
 }
 
 :root {
@@ -38,7 +39,11 @@
 
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+
+html {
+  scroll-behavior: smooth;
+  /* REMOVIDO: scroll-timeline experimental — causa overhead innecesario en móvil */
+}
 
 body {
   font-family: var(--font-body);
@@ -48,6 +53,70 @@ body {
   font-weight: 400;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ── Animaciones de entrada del hero ──────────────────────── */
+@keyframes heroFadeUp {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes heroFadeLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes heroFadeRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes heroScaleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(16px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Clases de entrada — desactivadas en móvil por defecto.
+   En móvil, animaciones + scroll simultáneo causan drop de FPS
+   porque cada elemento animado crea su propia capa GPU. */
+.hero-enter,
+.hero-enter-left,
+.hero-enter-right,
+.hero-enter-scale {
+  /* Sin animación en móvil — elementos visibles desde el inicio */
+  opacity: 1;
+  transform: none;
+}
+
+/* Delays de stagger — solo aplican en desktop */
+.delay-1 { animation-delay: 0.08s; }
+.delay-2 { animation-delay: 0.18s; }
+.delay-3 { animation-delay: 0.28s; }
+.delay-4 { animation-delay: 0.38s; }
+.delay-5 { animation-delay: 0.48s; }
+.delay-6 { animation-delay: 0.58s; }
+
+/* Respeto a la preferencia de reducción de movimiento */
+@media (prefers-reduced-motion: reduce) {
+  .hero-enter, .hero-enter-left, .hero-enter-right, .hero-enter-scale {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Desktop: activar animaciones de entrada */
+@media (min-width: 992px) {
+  .hero-enter {
+    animation: heroFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hero-enter-left {
+    animation: heroFadeLeft 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hero-enter-right {
+    animation: heroFadeRight 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hero-enter-scale {
+    animation: heroScaleIn 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -74,16 +143,15 @@ input, select, textarea, button { font-family: var(--font-body); }
   font-weight: 600;
   padding: 10px 24px;
   border-radius: var(--radius);
-  transition: all var(--transition);
+  /* transition:all reemplazado por propiedades específicas — all monitorea TODO cada frame */
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease, color 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  
   box-shadow: 0 4px 14px 0 rgba(245, 60, 62, 0.39);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 0.9rem;
-
 }
 .btn-hubox:hover:not(:disabled) {
   background: var(--btn-gradient-hover);
@@ -99,15 +167,15 @@ input, select, textarea, button { font-family: var(--font-body); }
 .topbar .social a:hover { opacity: 0.8; }
 .topbar .split { margin: 0 0.25rem; opacity: 0.9; }
 
-/* Card */
+/* Card — sin backdrop-filter: blur() que mata el scroll en móvil */
 .card-body {
   background-color: var(--white);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius);
 }
 .card {
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.98); /* Casi blanco, pero deja pasar un poco de luz */
+  /* backdrop-filter: blur() removido — causa jank severo en móvil al scrollear */
+  background: rgba(255, 255, 255, 0.99);
   border: 1px solid rgba(255, 255, 255, 0.4) !important;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
 }
@@ -115,6 +183,10 @@ input, select, textarea, button { font-family: var(--font-body); }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shake {
@@ -131,7 +203,11 @@ input, select, textarea, button { font-family: var(--font-body); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Micro-interacciones globales — solo propiedades compositeables */
+a, button, .btn, .btn-hubox, input, select {
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 main {
-   overflow-x: hidden;
-   width: 100%;
+  width: 100%;
 }

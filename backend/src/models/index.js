@@ -89,14 +89,6 @@ const Contacto = sequelize.define('Contacto', {
     allowNull: true,
   },
 
-  fuente: {
-    type: DataTypes.STRING,
-    validate: {
-      isIn: [['Referido', 'Portafolio', 'LinkedIn', 'Indeed', 'Sitio Web', 'Evento', 'Otro']],
-    },
-    allowNull: true,
-  },
-
   tags: {
     type: DataTypes.JSONB,
     allowNull: true,

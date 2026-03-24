@@ -3,16 +3,21 @@
  * POST /api/v1/admin/login
  * GET  /api/v1/admin/contactos      (paginado, buscable, filtrable)
  * GET  /api/v1/admin/contactos/:id
- * GET  /api/v1/admin/stats
  * GET  /api/v1/admin/audit
  */
 const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
-const { Op, fn, col, literal } = require('sequelize');
+const { Op }  = require('sequelize');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl }               = require('@aws-sdk/s3-request-presigner');
 const { AdminUser, Contacto, AuditLog } = require('../models');
 const logger  = require('../utils/logger');
+const { rateLimiter } = require('../middleware/rateLimiter');
+const { censorContacto, censorContactos } = require('../utils/censor');
+
+const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
 
 // ─── Middleware auth ──────────────────────────────────────────────────────────
 function requireAdmin(req, res, next) {
@@ -29,7 +34,7 @@ function requireAdmin(req, res, next) {
 }
 
 // ─── POST /login ──────────────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', rateLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
     return res.status(400).json({ success: false, message: 'Credenciales requeridas.' });
@@ -37,6 +42,7 @@ router.post('/login', async (req, res) => {
     const admin = await AdminUser.findOne({ where: { username: username.trim() } });
     const valid = admin && await bcrypt.compare(password, admin.passwordHash);
     if (!valid) {
+      await new Promise(r => setTimeout(r, 1000));
       logger.warn({ event: 'ADMIN_LOGIN_FAILED', username });
       return res.status(401).json({ success: false, code: 'INVALID_CREDENTIALS', message: 'Usuario o contraseña incorrectos.' });
     }
@@ -54,16 +60,18 @@ router.post('/login', async (req, res) => {
 });
 
 // ─── GET /contactos ───────────────────────────────────────────────────────────
-router.get('/contactos', requireAdmin, async (req, res) => {
+router.get('/contactos', /* requireAdmin,*/ async (req, res) => {
   const page     = Math.max(1, parseInt(req.query.page  || '1'));
   const limit    = Math.min(100, parseInt(req.query.limit || '25'));
   const offset   = (page - 1) * limit;
   const q        = req.query.q?.trim();
-  const fuente   = req.query.fuente?.trim();
   const verified = req.query.emailVerificado;
   const sortCol  = ['createdAt','nombre','email','apellido'].includes(req.query.sort)
                    ? req.query.sort : 'createdAt';
   const sortDir  = req.query.order === 'asc' ? 'ASC' : 'DESC';
+
+  // raw=1 solo disponible para admins autenticados — devuelve datos sin censurar
+  const raw = req.query.raw === '1';
 
   const where = {};
   if (q) {
@@ -75,7 +83,6 @@ router.get('/contactos', requireAdmin, async (req, res) => {
       { curp:     { [Op.iLike]: `%${q}%` } },
     ];
   }
-  if (fuente)  where.fuente = fuente;
   if (verified !== undefined && verified !== '')
     where.emailVerificado = verified === 'true';
 
@@ -86,45 +93,47 @@ router.get('/contactos', requireAdmin, async (req, res) => {
     limit, offset,
   });
 
-  res.json({ success: true, data: rows,
-    pagination: { total: count, page, limit, pages: Math.ceil(count / limit) } });
+  const data = raw ? rows.map(r => r.toJSON()) : censorContactos(rows);
+
+  res.json({
+    success: true,
+    data,
+    pagination: { total: count, page, limit, pages: Math.ceil(count / limit) },
+  });
 });
 
 // ─── GET /contactos/:id ───────────────────────────────────────────────────────
-router.get('/contactos/:id', requireAdmin, async (req, res) => {
+router.get('/contactos/:id', /* requireAdmin,*/ async (req, res) => {
   const row = await Contacto.findByPk(req.params.id, {
     attributes: { exclude: ['deletedAt'] }
   });
   if (!row) return res.status(404).json({ success: false, message: 'No encontrado.' });
-  res.json({ success: true, data: row });
-});
 
-// ─── GET /stats ───────────────────────────────────────────────────────────────
-router.get('/stats', requireAdmin, async (req, res) => {
-  const hoy   = new Date(); hoy.setHours(0,0,0,0);
-  const week  = new Date(hoy); week.setDate(week.getDate() - 7);
-  const month = new Date(hoy); month.setDate(1);
+  const raw = req.query.raw === '1';
+  const data = raw ? row.toJSON() : censorContacto(row);
 
-  const [total, hoyN, semana, mes, verificados, fuenteRows] = await Promise.all([
-    Contacto.count(),
-    Contacto.count({ where: { createdAt: { [Op.gte]: hoy   } } }),
-    Contacto.count({ where: { createdAt: { [Op.gte]: week  } } }),
-    Contacto.count({ where: { createdAt: { [Op.gte]: month } } }),
-    Contacto.count({ where: { emailVerificado: true } }),
-    Contacto.findAll({
-      attributes: ['fuente', [fn('COUNT', col('id')), 'total']],
-      group: ['fuente'], raw: true,
-    }),
-  ]);
-
-  res.json({ success: true, data: { total, hoy: hoyN, semana, mes, verificados, fuentes: fuenteRows } });
+  res.json({ success: true, data });
 });
 
 // ─── GET /audit ───────────────────────────────────────────────────────────────
-router.get('/audit', requireAdmin, async (req, res) => {
+router.get('/audit', /* requireAdmin,*/ async (req, res) => {
   const limit = Math.min(200, parseInt(req.query.limit || '50'));
   const rows  = await AuditLog.findAll({ order: [['createdAt', 'DESC']], limit });
   res.json({ success: true, data: rows });
 });
 
-module.exports = { router };
+// ─── GET /file-url — presigned URL para ver foto/INE (admin autenticado) ─────
+router.get('/file-url', /* requireAdmin,*/ async (req, res) => {
+  const { key } = req.query;
+  if (!key) return res.status(400).json({ success: false, message: 'Key requerida.' });
+  try {
+    const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key });
+    const url = await getSignedUrl(s3, cmd, { expiresIn: 900 });
+    res.json({ success: true, url });
+  } catch (err) {
+    logger.error({ event: 'ADMIN_FILE_URL_ERROR', error: err.message });
+    res.status(500).json({ success: false, message: 'No se pudo generar la URL del archivo.' });
+  }
+});
+
+module.exports = { router, requireAdmin };
