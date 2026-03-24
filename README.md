@@ -17,15 +17,15 @@ El proyecto prioriza no solo la funcionalidad básica, sino la seguridad por cap
 
 ## Objetivos
 
-- [ ] Captura de datos de contacto con validación en frontend y backend
-- [ ] Almacenamiento persistente con base de datos relacional
-- [ ] Consulta y búsqueda de registros almacenados
-- [ ] Exportación de datos
-- [ ] Verificación de identidad por OTP
-- [ ] Rate limiting progresivo y bloqueo por IP / dispositivo
-- [ ] CAPTCHA adaptativo
-- [ ] Identificación de dispositivos
-- [ ] Protección contra ataques comunes: SQLi, XSS, DDoS, HPP
+- [x] Captura de datos de contacto con validación en frontend y backend
+- [x] Almacenamiento persistente con base de datos relacional
+- [x] Consulta y búsqueda de registros almacenados
+- [x] Exportación de datos
+- [x] Verificación de identidad por OTP
+- [x] Rate limiting progresivo y bloqueo por IP / dispositivo
+- [x] CAPTCHA adaptativo
+- [x] Identificación de dispositivos
+- [x] Protección contra ataques comunes: SQLi, XSS, DDoS, HPP
 
 ## Tecnologías 
 
